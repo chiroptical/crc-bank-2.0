@@ -1,6 +1,6 @@
 from subprocess import Popen, PIPE
 from shlex import split
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 
@@ -102,3 +102,7 @@ def parse_proposal_type(s):
         return Right(ProposalType.Class)
     else:
         return Left(f"Valid proposal types are `proposal` or `class`, not `{s}`")
+
+
+def get_proposal_duration(t):
+    return timedelta(days=365) if t == ProposalType.Proposal else timedelta(days=122)

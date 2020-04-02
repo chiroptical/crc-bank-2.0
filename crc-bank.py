@@ -2,6 +2,7 @@
 """ crc-bank.py -- Deal with bank.db
 Usage:
     crc-bank.py insert <account> <type> <smp> <mpi> <gpu> <htc>
+    crc-bank.py modify <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py info <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
@@ -20,6 +21,7 @@ Options:
 
 Descriptions:
     crc-bank.py insert # insert for the first time
+    crc-bank.py modify # change to new limits, update proposal date
 """
 
 
@@ -51,12 +53,9 @@ if args["insert"]:
 
     # Make sure we understand the proposal type
     proposal_type = utils.unwrap_if_right(utils.parse_proposal_type(args["<type>"]))
-    proposal_duration = (
-        timedelta(days=365)
-        if proposal_type == utils.ProposalType.Proposal
-        else timedelta(days=122)
-    )
-    end_date = date.today() + proposal_duration
+    proposal_duration = utils.get_proposal_duration(proposal_type)
+    start_date = date.today()
+    end_date = start_date + proposal_duration
 
     # Service units should be a valid number
     sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
@@ -65,7 +64,7 @@ if args["insert"]:
         "account": args["<account>"],
         "proposal_type": proposal_type.value,
         "percent_notified": utils.PercentNotified.Zero.value,
-        "start_date": date.today(),
+        "start_date": start_date,
         "end_date": end_date,
     }
     for c in CLUSTERS:
@@ -90,6 +89,32 @@ elif args["info"]:
     od["end_date"] = od["end_date"].strftime("%d/%m/%y")
 
     print(json.dumps(od, indent=2))
+
+elif args["modify"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Service units should be a valid number
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+
+    # Update row in database
+    od = proposal_table.find_one(account=args["<account>"])
+    proposal_duration = utils.get_proposal_duration(
+        utils.ProposalType(od["proposal_type"])
+    )
+    start_date = date.today()
+    end_date = start_date + proposal_duration
+    od["start_date"] = start_date
+    od["end_date"] = end_date
+    for clus in CLUSTERS:
+        od[clus] = sus[clus]
+    proposal_table.update(od, ["id", "account"])
+
+    utils.log_action(
+        f"Modified proposal for {args['<account>']} with `{sus['smp']}` on SMP, `{sus['mpi']}` on MPI, `{sus['gpu']}` on GPU, and `{sus['htc']}` on HTC"
+    )
 
 else:
     print("Unrecognized command, you probably shouldn't see this...")
