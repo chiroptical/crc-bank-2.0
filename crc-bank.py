@@ -2,6 +2,7 @@
 """ crc-bank.py -- Deal with bank.db
 Usage:
     crc-bank.py insert <account> <type> <smp> <mpi> <gpu> <htc>
+    crc-bank.py info <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
 
@@ -29,6 +30,7 @@ import dataset
 from docopt import docopt
 from datetime import date, timedelta
 import utils
+import json
 
 args = docopt(__doc__, version="crc-bank.py version 0.0.1")
 
@@ -73,6 +75,21 @@ if args["insert"]:
     utils.log_action(
         f"Inserted proposal with type {proposal_type.name} for {args['<account>']} with `{sus['smp']}` on SMP, `{sus['mpi']}` on MPI, `{sus['gpu']}` on GPU, and `{sus['htc']}` on HTC"
     )
+
+elif args["info"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Get entire row, convert to human readable columns
+    od = proposal_table.find_one(account=args["<account>"])
+    od["proposal_type"] = utils.ProposalType(od["proposal_type"]).name
+    od["percent_notified"] = utils.PercentNotified(od["percent_notified"]).name
+    od["start_date"] = od["start_date"].strftime("%d/%m/%y")
+    od["end_date"] = od["end_date"].strftime("%d/%m/%y")
+
+    print(json.dumps(od, indent=2))
 
 else:
     print("Unrecognized command, you probably shouldn't see this...")
