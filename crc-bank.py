@@ -5,6 +5,7 @@ Usage:
     crc-bank.py modify <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py add <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py change <account> <smp> <mpi> <gpu> <htc>
+    crc-bank.py date <account> <date>
     crc-bank.py info <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
@@ -12,10 +13,11 @@ Usage:
 Positional Arguments:
     <account>       The associated slurm account
     <type>          The proposal type: proposal or class
-    <smp>           The limit in CPU Hours (e.g. 10,000)
-    <mpi>           The limit in CPU Hours (e.g. 10,000)
-    <gpu>           The limit in GPU Hours (e.g. 10,000)
-    <htc>           The limit in CPU Hours (e.g. 10,000)
+    <smp>           The limit in CPU Hours (e.g. 10000)
+    <mpi>           The limit in CPU Hours (e.g. 10000)
+    <gpu>           The limit in GPU Hours (e.g. 10000)
+    <htc>           The limit in CPU Hours (e.g. 10000)
+    <date>          Change proposal start date (e.g 01/01/18)
 
 Options:
     -h --help       Print this screen and exit
@@ -89,8 +91,8 @@ elif args["info"]:
     od = proposal_table.find_one(account=args["<account>"])
     od["proposal_type"] = utils.ProposalType(od["proposal_type"]).name
     od["percent_notified"] = utils.PercentNotified(od["percent_notified"]).name
-    od["start_date"] = od["start_date"].strftime("%d/%m/%y")
-    od["end_date"] = od["end_date"].strftime("%d/%m/%y")
+    od["start_date"] = od["start_date"].strftime("%m/%d/%y")
+    od["end_date"] = od["end_date"].strftime("%m/%d/%y")
 
     print(json.dumps(od, indent=2))
 
@@ -158,6 +160,29 @@ elif args["change"]:
 
     utils.log_action(
         f"Changed proposal for {args['<account>']} with `{sus['smp']}` on SMP, `{sus['mpi']}` on MPI, `{sus['gpu']}` on GPU, and `{sus['htc']}` on HTC"
+    )
+
+elif args["date"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Date should be valid
+    start_date = utils.unwrap_if_right(utils.check_date_valid(args["<date>"]))
+
+    # Update row in database
+    od = proposal_table.find_one(account=args["<account>"])
+    proposal_duration = utils.get_proposal_duration(
+        utils.ProposalType(od["proposal_type"])
+    )
+    end_date = start_date + proposal_duration
+    od["start_date"] = start_date
+    od["end_date"] = end_date
+    proposal_table.update(od, ["id"])
+
+    utils.log_action(
+        f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
 
 else:

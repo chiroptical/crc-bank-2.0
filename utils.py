@@ -108,3 +108,15 @@ def parse_proposal_type(s):
 
 def get_proposal_duration(t):
     return timedelta(days=365) if t == ProposalType.Proposal else timedelta(days=122)
+
+
+def check_date_valid(d):
+    try:
+        date = datetime.strptime(d, "%m/%d/%y")
+    except:
+        return Left(f"Could not parse date (e.g. 12/01/19), got `{date}`")
+
+    if date > date.today():
+        return Left(f"Parsed `{date}`, but start dates shouldn't be in the future")
+
+    return Right(date)
