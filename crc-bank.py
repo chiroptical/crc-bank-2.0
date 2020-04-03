@@ -3,6 +3,7 @@
 Usage:
     crc-bank.py insert <account> <type> <smp> <mpi> <gpu> <htc>
     crc-bank.py modify <account> <smp> <mpi> <gpu> <htc>
+    crc-bank.py add <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py info <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
@@ -22,6 +23,7 @@ Options:
 Descriptions:
     crc-bank.py insert # insert for the first time
     crc-bank.py modify # change to new limits, update proposal date
+    crc-bank.py add    # add SUs on top of current values
 """
 
 
@@ -110,11 +112,32 @@ elif args["modify"]:
     od["end_date"] = end_date
     for clus in CLUSTERS:
         od[clus] = sus[clus]
-    proposal_table.update(od, ["id", "account"])
+    proposal_table.update(od, ["id"])
 
     utils.log_action(
         f"Modified proposal for {args['<account>']} with `{sus['smp']}` on SMP, `{sus['mpi']}` on MPI, `{sus['gpu']}` on GPU, and `{sus['htc']}` on HTC"
     )
 
+elif args["add"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Service units should be a valid number
+    sus = utils.unwrap_if_right(
+        utils.check_service_units_valid(args, CLUSTERS, greater_than_ten_thousand=False)
+    )
+
+    # Update row in database
+    od = proposal_table.find_one(account=args["<account>"])
+    for clus in CLUSTERS:
+        od[clus] += sus[clus]
+    proposal_table.update(od, ["id"])
+
+    utils.log_action(
+        f"Added SUs to proposal for {args['<account>']}, new limits are `{od['smp']}` on SMP, `{od['mpi']}` on MPI, `{od['gpu']}` on GPU, and `{od['htc']}` on HTC"
+    )
+
 else:
-    print("Unrecognized command, you probably shouldn't see this...")
+    raise NotImplementedError("Your command isn't implemented yet.")

@@ -25,7 +25,7 @@ def unwrap_if_right(x):
     return x.value
 
 
-def check_service_units_valid(args, clusters):
+def check_service_units_valid(args, clusters, greater_than_ten_thousand=True):
     lefts = []
     result = {}
     for clus in clusters:
@@ -38,8 +38,10 @@ def check_service_units_valid(args, clusters):
     if lefts:
         return Left("\n".join(lefts))
     total_sus = sum(result.values())
-    if total_sus < 10000:
+    if greater_than_ten_thousand and total_sus < 10000:
         return Left(f"Total SUs should exceed 10000 SUs, got `{total_sus}`")
+    elif total_sus <= 0:
+        return Left(f"Total SUs should be greater than zero, got `{total_sus}`")
     return Right(result)
 
 
