@@ -4,6 +4,7 @@ Usage:
     crc-bank.py insert <account> <type> <smp> <mpi> <gpu> <htc>
     crc-bank.py modify <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py add <account> <smp> <mpi> <gpu> <htc>
+    crc-bank.py change <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py info <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
@@ -24,6 +25,7 @@ Descriptions:
     crc-bank.py insert # insert for the first time
     crc-bank.py modify # change to new limits, update proposal date
     crc-bank.py add    # add SUs on top of current values
+    crc-bank.py change # change to new limits, don't change proposal date
 """
 
 
@@ -139,5 +141,24 @@ elif args["add"]:
         f"Added SUs to proposal for {args['<account>']}, new limits are `{od['smp']}` on SMP, `{od['mpi']}` on MPI, `{od['gpu']}` on GPU, and `{od['htc']}` on HTC"
     )
 
+elif args["change"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Service units should be a valid number
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+
+    # Update row in database
+    od = proposal_table.find_one(account=args["<account>"])
+    for clus in CLUSTERS:
+        od[clus] = sus[clus]
+    proposal_table.update(od, ["id"])
+
+    utils.log_action(
+        f"Changed proposal for {args['<account>']} with `{sus['smp']}` on SMP, `{sus['mpi']}` on MPI, `{sus['gpu']}` on GPU, and `{sus['htc']}` on HTC"
+    )
+
 else:
-    raise NotImplementedError("Your command isn't implemented yet.")
+    raise NotImplementedError("The requested command isn't implemented yet.")

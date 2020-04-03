@@ -3,8 +3,8 @@ TODO
 
 #### Basic Usage
 
-- [ ] Implement `add` for `Proposal`/`Class`
-- [ ] Implement `change` for `Proposal`/`Class`
+- [X] Implement `add` for `Proposal`/`Class`
+- [X] Implement `change` for `Proposal`/`Class`
 - [ ] Implement `modify_date` for `Proposal`/`Class`
 - [ ] Implement `investor` proposal
 
