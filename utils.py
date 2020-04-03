@@ -95,6 +95,7 @@ class PercentNotified(Enum):
 class ProposalType(Enum):
     Proposal = 0
     Class = 1
+    Investor = 2
 
 
 def parse_proposal_type(s):

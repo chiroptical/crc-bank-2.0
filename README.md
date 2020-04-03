@@ -6,7 +6,7 @@ TODO
 - [X] Implement `add` for `Proposal`/`Class`
 - [X] Implement `change` for `Proposal`/`Class`
 - [X] Implement `modify_date` for `Proposal`/`Class`
-- [ ] Implement `investor` proposal
+- [X] Implement `investor` proposal
 
 #### Checks
 
