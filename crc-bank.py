@@ -8,6 +8,7 @@ Usage:
     crc-bank.py date <account> <date>
     crc-bank.py investor <account> <smp> <mpi> <gpu> <htc>
     crc-bank.py info <account>
+    crc-bank.py check_sus_limit <account>
     crc-bank.py -h | --help
     crc-bank.py -v | --version
 
@@ -41,6 +42,7 @@ from datetime import date, timedelta
 import utils
 import json
 from math import ceil
+
 
 args = docopt(__doc__, version="crc-bank.py version 0.0.1")
 
@@ -239,6 +241,30 @@ elif args["date"]:
     utils.log_action(
         f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
+
+elif args["check_sus_limit"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Compute the Total SUs for the proposal period
+    proposal_row = proposal_table.find_one(account=args["<account>"])
+    total_sus = sum([proposal_row[cluster] for cluster in CLUSTERS])
+
+    investor_rows = investor_table.find(account=args["<account>"])
+    for investor_row in investor_rows:
+        total_sus += sum([investor_row[f"current_{cluster}"] for cluster in CLUSTERS])
+
+    # Parse the used SUs for the proposal period
+    used_sus = 0
+    for cluster in CLUSTERS:
+        used_sus += utils.get_raw_usage_in_hours(args["<account>"], cluster)
+
+    # TODO: Finish this functionality
+    if used_sus > total_sus:
+        utils.lock_account(args["<account>"])
+        utils.notify_sus_limit(args["<account>"])
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")

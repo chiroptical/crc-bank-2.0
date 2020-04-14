@@ -2,6 +2,12 @@ from subprocess import Popen, PIPE
 from shlex import split
 from datetime import datetime, timedelta
 from enum import Enum
+from io import StringIO
+import csv
+from math import floor
+from smtplib import SMTP
+from email.message import EmailMessage
+from bs4 import BeautifulSoup
 
 
 def run_command(cmd):
@@ -121,3 +127,68 @@ def check_date_valid(d):
         return Left(f"Parsed `{date}`, but start dates shouldn't be in the future")
 
     return Right(date)
+
+
+def get_raw_usage_in_hours(account, cluster):
+    o, _ = run_command(f"sshare -A {account} -M {cluster} -P")
+    # Only the second and third line are necessary, wrapped in text buffer
+    sio = StringIO("\n".join(o.split("\n")[1:3]))
+
+    # use built-in CSV reader to read header and data
+    reader = csv.reader(sio, delimiter="|")
+    header = next(reader)
+    data = next(reader)
+
+    # Find the index of RawUsage from the header
+    raw_usage_idx = header.index("RawUsage")
+    return floor(int(data[raw_usage_idx]) / (60.0 * 60))
+
+
+def lock_account(account):
+    _, _ = run_command(
+        f"sacctmgr -i modify account where account={0} cluster=smp,gpu,mpi,htc set GrpTresRunMins=cpu=0"
+    )
+
+
+def unlock_account(account):
+    _, _ = run_command(
+        f"sacctmgr -i modify account where account={0} cluster=smp,gpu,mpi,htc set GrpTresRunMins=cpu=-1"
+    )
+
+
+# TODO: Need to pass the proposal information and get the usage inside this function
+def notify_sus_limit(account):
+    email_html = f"""\
+<html>
+<head></head>
+<body>
+<p>
+To Whom it May Concern,<br><br>
+This email has been generated automatically because your account on H2P has
+been locked. The one year allocation started on TODO. You'll need to submit
+another proposal requesting a supplemental allocation, details available
+https://crc.pitt.edu/Pitt-CRC-Allocation-Proposal-Guidelines.<br><br>
+Your usage is printed below:<br>
+<pre>
+TODO
+</pre>
+Thanks,<br><br>
+The CRC Proposal Bot
+</p>
+</body>
+</html>
+"""
+
+    # Extract the text from the email
+    soup = BeautifulSoup(email_html, "html.parser")
+    email_text = soup.get_text()
+
+    msg = EmailMessage()
+    msg.set_content(email_text)
+    # msg.add_alternative(email_html, subtype="html")
+    msg["Subject"] = f"Your allocation on H2P for account: {account}"
+    msg["From"] = "noreply@pitt.edu"
+    msg["To"] = "bmooreii@pitt.edu"
+
+    with SMTP("localhost") as s:
+        s.send_message(msg)
