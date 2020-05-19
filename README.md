@@ -10,7 +10,7 @@ TODO
 
 #### Checks
 
-- [ ] Check account has run out of SUs
+- [X] Check account has run out of SUs
 - [ ] Check account has passed proposal period
 - [ ] Check proposal will end within three months
 
@@ -21,3 +21,7 @@ TODO
 - [ ] Command that finds accounts which are using more than requested based on
   their proposal
 - [ ] Command that shows current usage for an account
+
+#### TODO
+
+- [ ] Add current usage to `check_sus_limit` email
