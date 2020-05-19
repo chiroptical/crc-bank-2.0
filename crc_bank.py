@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env /ihome/sam/cluster/scripts/python3.7_wrap.sh
 """ crc_bank.py -- Deal with crc_bank.db
 Usage:
     crc_bank.py insert <type> <account> <smp> <mpi> <gpu> <htc>
@@ -11,6 +11,7 @@ Usage:
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
     crc_bank.py get_sus <account>
+    crc_bank.py dump <proposal.json> <investor.json>
     crc_bank.py -h | --help
     crc_bank.py -v | --version
 
@@ -22,6 +23,8 @@ Positional Arguments:
     <gpu>           The limit in GPU Hours (e.g. 10000)
     <htc>           The limit in CPU Hours (e.g. 10000)
     <date>          Change proposal start date (e.g 12/01/19)
+    <proposal.json> The proposal table in JSON format
+    <investor.json> The investor table in JSON format
 
 Options:
     -h --help       Print this screen and exit
@@ -35,11 +38,13 @@ Additional Documentation:
 """
 
 
+import datafreeze
 from docopt import docopt
 from datetime import date, timedelta
 import utils
 import json
 from math import ceil
+from pathlib import Path
 from constants import CLUSTERS, proposal_table, investor_table
 
 
@@ -321,6 +326,17 @@ elif args["get_sus"]:
             current = f"current_{cluster}"
             sus[idx] = str(row[current])
         print(f"investment,{','.join(sus)}")
+
+elif args["dump"]:
+    proposal_p = Path(args["<proposal.json>"])
+    investor_p = Path(args["<investor.json>"])
+    if not (proposal_p.exists() and investor_p.exists()):
+        proposal_items = proposal_table.all()
+        investor_items = investor_table.all()
+        datafreeze.freeze(proposal_items, format="json", filename=proposal_p)
+        datafreeze.freeze(investor_items, format="json", filename=investor_p)
+    else:
+        exit(f"ERROR: Neither {proposal_p} nor {investor_p} can exists.")
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
