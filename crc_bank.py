@@ -10,6 +10,7 @@ Usage:
     crc_bank.py info <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
+    crc_bank.py get_sus <account>
     crc_bank.py -h | --help
     crc_bank.py -v | --version
 
@@ -300,6 +301,26 @@ elif args["check_proposal_end_date"]:
         utils.log_action(
             f"The account for {args['<account>']} was locked because it reached the end date {proposal_row['end_date']}"
         )
+
+elif args["get_sus"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    proposal_row = proposal_table.find_one(account=args["<account>"])
+
+    print(f"type,{','.join(CLUSTERS)}")
+    sus = [str(proposal_row[c]) for c in CLUSTERS]
+    print(f"proposal,{','.join(sus)}")
+
+    ods = investor_table.find(account=args["<account>"])
+    for row in ods:
+        sus = [None] * len(CLUSTERS)
+        for idx, cluster in enumerate(CLUSTERS):
+            current = f"current_{cluster}"
+            sus[idx] = str(row[current])
+        print(f"investment,{','.join(sus)}")
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
