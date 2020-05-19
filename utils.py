@@ -8,7 +8,7 @@ from math import floor
 from smtplib import SMTP
 from email.message import EmailMessage
 from bs4 import BeautifulSoup
-from constants import CLUSTERS, proposal_table, investor_table
+from constants import CLUSTERS, proposal_table, investor_table, date_format
 
 
 def run_command(cmd):
@@ -226,7 +226,7 @@ def get_investment_status(account):
                 per_year = f"per_year_{cluster}"
                 current = f"current_{cluster}"
                 withdrawn = f"withdrawn_{cluster}"
-                result_s += f"{cluster:7} | {row[cluster]:20} | {row['start_date']} | {row[per_year]:12} | {row[current]:11} | {row[withdrawn]:13}\n"
+                result_s += f"{cluster:7} | {row[cluster]:20} | {row['start_date'].strftime(date_format)} | {row[per_year]:12} | {row[current]:11} | {row[withdrawn]:13}\n"
 
     return result_s
 
@@ -264,21 +264,84 @@ The CRC Proposal Bot
 
     email_html = email_html.format(
         PercentNotified(proposal_row["percent_notified"]).to_percentage(),
-        proposal_row["start_date"],
+        proposal_row["start_date"].strftime(date_format),
         "TODO",
         investment_s,
     )
 
+    send_email(email_html, account)
+
+
+def send_email(email_html, account):
     # Extract the text from the email
     soup = BeautifulSoup(email_html, "html.parser")
     email_text = soup.get_text()
 
     msg = EmailMessage()
     msg.set_content(email_text)
-    # msg.add_alternative(email_html, subtype="html")
+    msg.add_alternative(email_html, subtype="html")
     msg["Subject"] = f"Your allocation on H2P for account: {account}"
     msg["From"] = "noreply@pitt.edu"
+    # TODO: Need to send this to the correct email!
     msg["To"] = "bmooreii@pitt.edu"
 
     with SMTP("localhost") as s:
         s.send_message(msg)
+
+
+def three_month_proposal_expiry_notification(account):
+    proposal_row = proposal_table.find_one(account=account)
+
+    email_html = """\
+<html>
+<head></head>
+<body>
+<p>
+To Whom it May Concern,<br><br>
+This email has been generated automatically because your proposal for account
+{} on H2P will expire in 90 days on {}. The one year allocation started on {}.
+If you would like to submit another proposal please visit
+https://crc.pitt.edu/Pitt-CRC-Allocation-Proposal-Guidelines.<br><br>
+Thanks,<br><br>
+The CRC Proposal Bot
+</p>
+</body>
+</html>
+"""
+
+    email_html = email_html.format(
+        account,
+        proposal_row["end_date"].strftime(date_format),
+        proposal_row["start_date"].strftime(date_format),
+    )
+
+    send_email(email_html, account)
+
+
+def proposal_expires_notification(account):
+    proposal_row = proposal_table.find_one(account=account)
+
+    email_html = """\
+<html>
+<head></head>
+<body>
+<p>
+To Whom it May Concern,<br><br>
+This email has been generated automatically because your proposal for account
+{} on H2P has expired. The one year allocation started on {}.  If you would
+like to submit another proposal please visit
+https://crc.pitt.edu/Pitt-CRC-Allocation-Proposal-Guidelines.<br><br>
+Thanks,<br><br>
+The CRC Proposal Bot
+</p>
+</body>
+</html>
+"""
+
+    email_html = email_html.format(
+        account,
+        proposal_row["end_date"].strftime(date_format),
+        proposal_row["start_date"].strftime(date_format),
+    )
+
+    send_email(email_html, account)
