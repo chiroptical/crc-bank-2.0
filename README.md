@@ -11,8 +11,8 @@ TODO
 #### Checks
 
 - [X] Check account has run out of SUs
-- [ ] Check account has passed proposal period
-- [ ] Check proposal will end within three months
+- [X] Check account has passed proposal period
+- [X] Check proposal will end within three months
 
 #### Utilities
 
