@@ -16,7 +16,7 @@ TODO
 
 #### Utilities
 
-- [ ] Command that queries SUs for each cluster in CSV format
+- [X] Command that queries SUs for each cluster in CSV format
 - [ ] Command that dumps database in JSON format
 - [ ] Command that finds accounts which are using more than requested based on
   their proposal
