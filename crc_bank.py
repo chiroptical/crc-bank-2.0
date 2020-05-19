@@ -1,15 +1,16 @@
 #!/usr/bin/env python
-""" crc-bank.py -- Deal with bank.db
+""" crc_bank.py -- Deal with crc_bank.db
 Usage:
-    crc-bank.py insert <type> <account> <smp> <mpi> <gpu> <htc>
-    crc-bank.py modify <account> <smp> <mpi> <gpu> <htc>
-    crc-bank.py add <account> <smp> <mpi> <gpu> <htc>
-    crc-bank.py change <account> <smp> <mpi> <gpu> <htc>
-    crc-bank.py date <account> <date>
-    crc-bank.py investor <account> <smp> <mpi> <gpu> <htc>
-    crc-bank.py info <account>
-    crc-bank.py -h | --help
-    crc-bank.py -v | --version
+    crc_bank.py insert <type> <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py modify <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py add <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py change <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py date <account> <date>
+    crc_bank.py investor <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py info <account>
+    crc_bank.py check_sus_limit <account>
+    crc_bank.py -h | --help
+    crc_bank.py -v | --version
 
 Positional Arguments:
     <account>       The associated slurm account
@@ -22,32 +23,26 @@ Positional Arguments:
 
 Options:
     -h --help       Print this screen and exit
-    -v --version    Print the version of crc-bank.py
+    -v --version    Print the version of crc_bank.py
 
 Additional Documentation:
-    crc-bank.py insert # insert for the first time
-    crc-bank.py modify # change to new limits, update proposal date
-    crc-bank.py add    # add SUs on top of current values
-    crc-bank.py change # change to new limits, don't change proposal date
+    crc_bank.py insert # insert for the first time
+    crc_bank.py modify # change to new limits, update proposal date
+    crc_bank.py add    # add SUs on top of current values
+    crc_bank.py change # change to new limits, don't change proposal date
 """
 
 
-CLUSTERS = ["smp", "mpi", "gpu", "htc"]
-
-
-import dataset
 from docopt import docopt
 from datetime import date, timedelta
 import utils
 import json
 from math import ceil
+from constants import CLUSTERS, proposal_table, investor_table
 
-args = docopt(__doc__, version="crc-bank.py version 0.0.1")
 
+args = docopt(__doc__, version="crc_bank.py version 0.0.1")
 
-db = dataset.connect("sqlite:///crc-bank.db")
-proposal_table = db["proposal"]
-investor_table = db["investor"]
 
 if args["insert"]:
     # Account shouldn't exist in the proposal table already
@@ -57,7 +52,7 @@ if args["insert"]:
 
     # Account associations better exist!
     _ = utils.unwrap_if_right(
-        utils.account_and_cluster_associations_exists(args["<account>"], CLUSTERS)
+        utils.account_and_cluster_associations_exists(args["<account>"])
     )
 
     # Make sure we understand the proposal type
@@ -67,7 +62,7 @@ if args["insert"]:
     end_date = start_date + proposal_duration
 
     # Service units should be a valid number
-    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args))
 
     to_insert = {
         "account": args["<account>"],
@@ -92,7 +87,7 @@ elif args["investor"]:
 
     # Account associations better exist!
     _ = utils.unwrap_if_right(
-        utils.account_and_cluster_associations_exists(args["<account>"], CLUSTERS)
+        utils.account_and_cluster_associations_exists(args["<account>"])
     )
 
     # Investor accounts last 5 years
@@ -101,7 +96,7 @@ elif args["investor"]:
     end_date = start_date + timedelta(days=1825)
 
     # Service units should be a valid number
-    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args))
 
     to_insert = {
         "account": args["<account>"],
@@ -158,7 +153,7 @@ elif args["modify"]:
     )
 
     # Service units should be a valid number
-    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args))
 
     # Update row in database
     od = proposal_table.find_one(account=args["<account>"])
@@ -185,7 +180,7 @@ elif args["add"]:
 
     # Service units should be a valid number
     sus = utils.unwrap_if_right(
-        utils.check_service_units_valid(args, CLUSTERS, greater_than_ten_thousand=False)
+        utils.check_service_units_valid(args, greater_than_ten_thousand=False)
     )
 
     # Update row in database
@@ -205,7 +200,7 @@ elif args["change"]:
     )
 
     # Service units should be a valid number
-    sus = utils.unwrap_if_right(utils.check_service_units_valid(args, CLUSTERS))
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args))
 
     # Update row in database
     od = proposal_table.find_one(account=args["<account>"])
@@ -239,6 +234,50 @@ elif args["date"]:
     utils.log_action(
         f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
+
+elif args["check_sus_limit"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Compute the Total SUs for the proposal period
+    proposal_row = proposal_table.find_one(account=args["<account>"])
+    total_sus = sum([proposal_row[cluster] for cluster in CLUSTERS])
+
+    investor_rows = investor_table.find(account=args["<account>"])
+    for investor_row in investor_rows:
+        total_sus += sum([investor_row[f"current_{cluster}"] for cluster in CLUSTERS])
+
+    # Parse the used SUs for the proposal period
+    used_sus = 0
+    for cluster in CLUSTERS:
+        used_sus += utils.get_raw_usage_in_hours(args["<account>"], cluster)
+
+    notification_percent = utils.PercentNotified(proposal_row["percent_notified"])
+    if notification_percent == utils.PercentNotified.Hundred:
+        exit(
+            f"Skipping account {args['<account>']} because it should have already been notified and locked"
+        )
+
+    percent_usage = 100.0 * used_sus / total_sus
+
+    # Update percent_notified in the table and notify account owner if necessary
+    updated_notification_percent = utils.find_next_notification(percent_usage)
+    if updated_notification_percent != notification_percent:
+        proposal_row["percent_notified"] = updated_notification_percent.value
+        proposal_table.update(proposal_row, ["id"])
+        utils.notify_sus_limit(args["<account>"])
+
+        utils.log_action(
+            f"Updated proposal percent_notified to {updated_notification_percent} for {args['<account>']}"
+        )
+
+    # Lock the account if necessary
+    if updated_notification_percent == utils.PercentNotified.Hundred:
+        utils.lock_account(args["<account>"])
+
+        utils.log_action(f"The account for {args['<account>']} was locked")
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
