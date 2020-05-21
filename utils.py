@@ -345,3 +345,34 @@ The CRC Proposal Bot
     )
 
     send_email(email_html, account)
+
+
+def get_available_investor_sus(account):
+    res = []
+    ods = investor_table.find(account=account)
+    for od in ods:
+        d = {c: 0 for c in CLUSTERS}
+        for c in CLUSTERS:
+            d[c] += od[c] - od[f"withdrawn_{c}"]
+        res.append(d)
+    return res
+
+
+def get_current_investor_sus(account):
+    res = []
+    ods = investor_table.find(account=account)
+    for od in ods:
+        d = {c: 0 for c in CLUSTERS}
+        for c in CLUSTERS:
+            d[c] += od[f"current_{c}"]
+        res.append(d)
+    return res
+
+
+def sum_investments(investments):
+    sum_d = {c: 0 for c in CLUSTERS}
+    for row in investments:
+        for c in CLUSTERS:
+            sum_d[c] += row[c]
+
+    return sum_d
