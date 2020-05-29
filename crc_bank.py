@@ -9,6 +9,7 @@ Usage:
     crc_bank.py investor <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py withdraw <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py info <account>
+    crc_bank.py usage <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
     crc_bank.py check_proposal_violations
@@ -49,6 +50,7 @@ from math import ceil
 from pathlib import Path
 from constants import CLUSTERS, proposal_table, investor_table
 from copy import copy
+from io import StringIO
 
 
 args = docopt(__doc__, version="crc_bank.py version 0.0.1")
@@ -419,6 +421,19 @@ elif args["check_proposal_violations"]:
                 print(
                     f"Account {proposal['account']}, Cluster {cluster}, Used SUs {used_sus}, Avail SUs {avail_sus}, Investment SUs {investments[cluster]}"
                 )
+
+elif args["usage"]:
+    proposal = proposal_table.find_one(account=args["<account>"])
+    investments = investor_table.find(account=args["<account>"])
+    # print(proposal)
+    # for investment in investments:
+    #    print(investment)
+    with StringIO() as output:
+        total_smp_usage = utils.get_account_usage(
+            args["<account>"], "smp", proposal["smp"], output
+        )
+        print(output.getvalue())
+    print(total_smp_usage)
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
