@@ -11,6 +11,7 @@ Usage:
     crc_bank.py info <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
+    crc_bank.py check_proposal_violations
     crc_bank.py get_sus <account>
     crc_bank.py dump <proposal.json> <investor.json>
     crc_bank.py -h | --help
@@ -402,6 +403,22 @@ elif args["withdraw"]:
         if sum(sus_to_withdraw.values()) == 0:
             print(f"Finished withdrawing after {idx} iterations")
             break
+
+elif args["check_proposal_violations"]:
+    # Iterate over all of the proposals looking for proposal violations
+    proposals = proposal_table.find()
+    for proposal in proposals:
+        investments = utils.sum_investments(
+            utils.get_available_investor_sus(proposal["account"])
+        )
+
+        for cluster in CLUSTERS:
+            avail_sus = proposal[cluster]
+            used_sus = utils.get_raw_usage_in_hours(proposal["account"], cluster)
+            if used_sus > (avail_sus + investments[cluster]):
+                print(
+                    f"Account {proposal['account']}, Cluster {cluster}, Used SUs {used_sus}, Avail SUs {avail_sus}, Investment SUs {investments[cluster]}"
+                )
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
