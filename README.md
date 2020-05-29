@@ -20,7 +20,7 @@ TODO
 
 - [X] Command that queries SUs for each cluster in CSV format
 - [X] Command that dumps database in JSON format
-- [ ] Command that finds accounts which are using more than requested based on
+- [X] Command that finds accounts which are using more than requested based on
   their proposal
 - [ ] Command that shows current usage for an account
 - [ ] Command that reads database from JSON format (dangerous!)
