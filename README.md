@@ -7,7 +7,7 @@ TODO
 - [X] Implement `change` for `Proposal`/`Class`
 - [X] Implement `modify_date` for `Proposal`/`Class`
 - [X] Implement `investor` proposal
-- [ ] Implement `withdraw` for investments
+- [X] Implement `withdraw` for investments
 
 #### Checks
 

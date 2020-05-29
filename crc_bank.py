@@ -7,6 +7,7 @@ Usage:
     crc_bank.py change <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py date <account> <date>
     crc_bank.py investor <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py withdraw <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py info <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
@@ -46,6 +47,7 @@ import json
 from math import ceil
 from pathlib import Path
 from constants import CLUSTERS, proposal_table, investor_table
+from copy import copy
 
 
 args = docopt(__doc__, version="crc_bank.py version 0.0.1")
@@ -114,14 +116,15 @@ elif args["investor"]:
     }
     for c in CLUSTERS:
         to_insert[c] = sus[c]
-        to_insert[f"per_year_{c}"] = ceil(sus[c] / 5)
         to_insert[f"current_{c}"] = ceil(sus[c] / 5)
-        to_insert[f"withdrawn_{c}"] = 0
+        to_insert[f"withdrawn_{c}"] = ceil(sus[c] / 5)
 
     investor_table.insert(to_insert)
 
+    current_sus = {c: to_insert[f"current_{c}"] for c in CLUSTERS}
+
     utils.log_action(
-        f"Inserted investment for {args['<account>']} with per year allocations of `{to_insert['per_year_smp']}` on SMP, `{to_insert['per_year_mpi']}` on MPI, `{to_insert['per_year_gpu']}` on GPU, and `{to_insert['per_year_htc']}` on HTC"
+        f"Inserted investment for {args['<account>']} with per year allocations of `{current_sus['smp']}` on SMP, `{current_sus['mpi']}` on MPI, `{current_sus['gpu']}` on GPU, and `{current_sus['htc']}` on HTC"
     )
 
 elif args["info"]:
@@ -143,12 +146,12 @@ elif args["info"]:
     print()
 
     ods = investor_table.find(account=args["<account>"])
-    for idx, od in enumerate(ods):
+    for od in ods:
         od["proposal_type"] = utils.ProposalType(od["proposal_type"]).name
         od["start_date"] = od["start_date"].strftime("%m/%d/%y")
         od["end_date"] = od["end_date"].strftime("%m/%d/%y")
 
-        print(f"Investment: {idx:3}")
+        print(f"Investment: {od['id']:3}")
         print(f"---------------")
         print(json.dumps(od, indent=2))
         print()
@@ -242,6 +245,7 @@ elif args["date"]:
         f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
 
+# TODO: Archive investments if they have no SUs to withdraw
 elif args["check_sus_limit"]:
     # Account must exist in database
     _ = utils.unwrap_if_right(
@@ -319,12 +323,9 @@ elif args["get_sus"]:
     sus = [str(proposal_row[c]) for c in CLUSTERS]
     print(f"proposal,{','.join(sus)}")
 
-    ods = investor_table.find(account=args["<account>"])
-    for row in ods:
-        sus = [None] * len(CLUSTERS)
-        for idx, cluster in enumerate(CLUSTERS):
-            current = f"current_{cluster}"
-            sus[idx] = str(row[current])
+    investor_sus = utils.get_current_investor_sus(args["<account>"])
+    for row in investor_sus:
+        sus = [str(row[c]) for c in CLUSTERS]
         print(f"investment,{','.join(sus)}")
 
 elif args["dump"]:
@@ -337,6 +338,71 @@ elif args["dump"]:
         datafreeze.freeze(investor_items, format="json", filename=investor_p)
     else:
         exit(f"ERROR: Neither {proposal_p} nor {investor_p} can exists.")
+
+elif args["withdraw"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Service units should be a valid number
+    sus_to_withdraw = utils.unwrap_if_right(
+        utils.check_service_units_valid(args, greater_than_ten_thousand=False)
+    )
+
+    # First check if the user has enough SUs to withdraw
+    available_investments = utils.sum_investments(
+        utils.get_available_investor_sus(args["<account>"])
+    )
+
+    should_exit = False
+    for c in CLUSTERS:
+        if sus_to_withdraw[c] > available_investments[c]:
+            should_exit = True
+            print(
+                f"Requested to withdraw {sus_to_withdraw[c]} on cluster {c} but the account only has {available_investments[c]} SUs to withdraw from on this cluster!"
+            )
+    if should_exit:
+        exit()
+
+    # Go through investments, oldest first and start withdrawing
+    investments = investor_table.find(account=args["<account>"])
+    for idx, investment in enumerate(investments):
+        to_withdraw = {c: 0 for x in CLUSTERS}
+        investment_remaining = {
+            c: investment[c] - investment[f"withdrawn_{c}"] for c in CLUSTERS
+        }
+
+        # If not SUs to withdraw, skip the proposal entirely
+        if sum(investment_remaining.values()) == 0:
+            print(
+                f"No service units can be withdrawn from investment {investment['id']}"
+            )
+            continue
+
+        # Determine what we can withdraw from current investment
+        for cluster in CLUSTERS:
+            if sus_to_withdraw[cluster] > investment_remaining[cluster]:
+                to_withdraw[cluster] = investment_remaining[cluster]
+                sus_to_withdraw[cluster] -= investment_remaining[cluster]
+            else:
+                to_withdraw[cluster] = sus_to_withdraw[cluster]
+                sus_to_withdraw[cluster] = 0
+
+        # Update the current investment and log withdrawal
+        for cluster in CLUSTERS:
+            investment[f"current_{cluster}"] += to_withdraw[cluster]
+            investment[f"withdrawn_{cluster}"] += to_withdraw[cluster]
+        investor_table.update(investment, ["id"])
+        values = ",".join([f"{c}: {to_withdraw[c]}" for c in CLUSTERS])
+        utils.log_action(
+            f"Withdrew from investment {investment['id']} for account {args['<account>']} with values {values}"
+        )
+
+        # Determine if we are done processing investments
+        if sum(sus_to_withdraw.values()) == 0:
+            print(f"Finished withdrawing after {idx} iterations")
+            break
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
