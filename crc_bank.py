@@ -117,7 +117,7 @@ elif args["investor"]:
     for c in CLUSTERS:
         to_insert[c] = sus[c]
         to_insert[f"current_{c}"] = ceil(sus[c] / 5)
-        to_insert[f"withdrawn_{c}"] = 0
+        to_insert[f"withdrawn_{c}"] = ceil(sus[c] / 5)
 
     investor_table.insert(to_insert)
 
@@ -146,12 +146,12 @@ elif args["info"]:
     print()
 
     ods = investor_table.find(account=args["<account>"])
-    for idx, od in enumerate(ods):
+    for od in ods:
         od["proposal_type"] = utils.ProposalType(od["proposal_type"]).name
         od["start_date"] = od["start_date"].strftime("%m/%d/%y")
         od["end_date"] = od["end_date"].strftime("%m/%d/%y")
 
-        print(f"Investment: {idx:3}")
+        print(f"Investment: {od['id']:3}")
         print(f"---------------")
         print(json.dumps(od, indent=2))
         print()
@@ -245,6 +245,7 @@ elif args["date"]:
         f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
 
+# TODO: Archive investments if they have no SUs to withdraw
 elif args["check_sus_limit"]:
     # Account must exist in database
     _ = utils.unwrap_if_right(
@@ -366,29 +367,42 @@ elif args["withdraw"]:
 
     # Go through investments, oldest first and start withdrawing
     investments = investor_table.find(account=args["<account>"])
-    for investment in investments:
+    for idx, investment in enumerate(investments):
         to_withdraw = {c: 0 for x in CLUSTERS}
         investment_remaining = {
             c: investment[c] - investment[f"withdrawn_{c}"] for c in CLUSTERS
         }
+
+        # If not SUs to withdraw, skip the proposal entirely
+        if sum(investment_remaining.values()) == 0:
+            print(
+                f"No service units can be withdrawn from investment {investment['id']}"
+            )
+            continue
+
+        # Determine what we can withdraw from current investment
         for cluster in CLUSTERS:
             if sus_to_withdraw[cluster] > investment_remaining[cluster]:
-                investment_remaining[cluster] = 0
                 to_withdraw[cluster] = investment_remaining[cluster]
+                sus_to_withdraw[cluster] -= investment_remaining[cluster]
             else:
-                investment_remaining[cluster] = (
-                    investment_remaining[cluster] - sus_to_withdraw[cluster]
-                )
-                to_withdraw[cluster] = investment_remaining[cluster]
+                to_withdraw[cluster] = sus_to_withdraw[cluster]
                 sus_to_withdraw[cluster] = 0
 
-        # TODO:
-        # - Update the investment
-        # - Need to determine how to archive investments
-        # - Break out of loop if there is
-        print("to_withdraw", to_withdraw)
-        print("investment_remaining", investment_remaining)
-        print("sus_to_withdraw", sus_to_withdraw)
+        # Update the current investment and log withdrawal
+        for cluster in CLUSTERS:
+            investment[f"current_{cluster}"] += to_withdraw[cluster]
+            investment[f"withdrawn_{cluster}"] += to_withdraw[cluster]
+        investor_table.update(investment, ["id"])
+        values = ",".join([f"{c}: {to_withdraw[c]}" for c in CLUSTERS])
+        utils.log_action(
+            f"Withdrew from investment {investment['id']} for account {args['<account>']} with values {values}"
+        )
+
+        # Determine if we are done processing investments
+        if sum(sus_to_withdraw.values()) == 0:
+            print(f"Finished withdrawing after {idx} iterations")
+            break
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
