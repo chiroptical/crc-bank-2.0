@@ -14,6 +14,7 @@ TODO
 - [X] Check account has run out of SUs
 - [X] Check account has passed proposal period
 - [X] Check proposal will end within three months
+- [ ] `check_sus_limit` needs to archive exhausted investments
 
 #### Utilities
 
