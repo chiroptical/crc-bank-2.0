@@ -245,7 +245,6 @@ elif args["date"]:
         f"Modify proposal start date for {args['<account>']} to {start_date}"
     )
 
-# TODO: Archive investments if they have no SUs to withdraw
 elif args["check_sus_limit"]:
     # Account must exist in database
     _ = utils.unwrap_if_right(
