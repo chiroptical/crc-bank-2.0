@@ -9,6 +9,7 @@ Usage:
     crc_bank.py investor <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py withdraw <account> <smp> <mpi> <gpu> <htc>
     crc_bank.py info <account>
+    crc_bank.py usage <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
     crc_bank.py check_proposal_violations
@@ -49,6 +50,7 @@ from math import ceil
 from pathlib import Path
 from constants import CLUSTERS, proposal_table, investor_table
 from copy import copy
+from io import StringIO
 
 
 args = docopt(__doc__, version="crc_bank.py version 0.0.1")
@@ -419,6 +421,33 @@ elif args["check_proposal_violations"]:
                 print(
                     f"Account {proposal['account']}, Cluster {cluster}, Used SUs {used_sus}, Avail SUs {avail_sus}, Investment SUs {investments[cluster]}"
                 )
+
+elif args["usage"]:
+    proposal = proposal_table.find_one(account=args["<account>"])
+    investments = utils.sum_investments(investor_table.find(account=args["<account>"]))
+    with StringIO() as output:
+        for cluster in CLUSTERS:
+            output.write(f"|{'-' * 82}|\n")
+            output.write(
+                f"|{'Cluster: ' + cluster + ', Available SUs: ' + str(proposal[cluster]) + ', Investment SUs: ' + str(investments[cluster]):^82}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            output.write(
+                f"|{'User':^20}|{'SUs Used':^30}|{'Percentage of Total':^30}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            total_usage = utils.get_account_usage(
+                args["<account>"], cluster, proposal[cluster], output
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            if proposal[cluster] == 0:
+                output.write(f"|{'Overall':^20}|{total_usage:^30}|{'N/A':^30}|\n")
+            else:
+                output.write(
+                    f"|{'Overall':^20}|{total_usage:^30}|{100 * total_usage / proposal[cluster]:^30}|\n"
+                )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+        print(output.getvalue())
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")

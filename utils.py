@@ -177,7 +177,7 @@ def check_date_valid(d):
 
 
 def get_raw_usage_in_hours(account, cluster):
-    o, _ = run_command(f"sshare -A {account} -M {cluster} -P")
+    o, _ = run_command(f"sshare -A {account} -M {cluster} -P -a")
     # Only the second and third line are necessary, wrapped in text buffer
     sio = StringIO("\n".join(o.split("\n")[1:3]))
 
@@ -188,7 +188,7 @@ def get_raw_usage_in_hours(account, cluster):
 
     # Find the index of RawUsage from the header
     raw_usage_idx = header.index("RawUsage")
-    return floor(int(data[raw_usage_idx]) / (60.0 * 60))
+    return convert_to_hours(data[raw_usage_idx])
 
 
 def lock_account(account):
@@ -376,3 +376,33 @@ def sum_investments(investments):
             sum_d[c] += row[c]
 
     return sum_d
+
+
+def convert_to_hours(usage):
+    return floor(int(usage) / (60.0 * 60.0))
+
+
+def get_account_usage(account, cluster, avail_sus, output):
+    o, _ = run_command(f"sshare -A {account} -M {cluster} -P -a")
+    # Second line onward, required
+    sio = StringIO("\n".join(o.split("\n")[1:]))
+
+    # use built-in CSV reader to read header and data
+    reader = csv.reader(sio, delimiter="|")
+    header = next(reader)
+    raw_usage_idx = header.index("RawUsage")
+    user_idx = header.index("User")
+    for idx, data in enumerate(reader):
+        if idx != 0:
+            user = data[user_idx]
+            usage = convert_to_hours(data[raw_usage_idx])
+            if avail_sus == 0:
+                output.write(f"|{user:^20}|{usage:^30}|{'N/A':^30}|\n")
+            else:
+                output.write(
+                    f"|{user:^20}|{usage:^30}|{100.0 * usage / avail_sus:^30}|\n"
+                )
+        else:
+            total_cluster_usage = convert_to_hours(data[raw_usage_idx])
+
+    return total_cluster_usage
