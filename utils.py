@@ -396,7 +396,12 @@ def get_account_usage(account, cluster, avail_sus, output):
         if idx != 0:
             user = data[user_idx]
             usage = convert_to_hours(data[raw_usage_idx])
-            output.write(f"{user:15} {usage:15} {100.0 * usage / avail_sus:15}\n")
+            if avail_sus == 0:
+                output.write(f"|{user:^20}|{usage:^30}|{'N/A':^30}|\n")
+            else:
+                output.write(
+                    f"|{user:^20}|{usage:^30}|{100.0 * usage / avail_sus:^30}|\n"
+                )
         else:
             total_cluster_usage = convert_to_hours(data[raw_usage_idx])
 

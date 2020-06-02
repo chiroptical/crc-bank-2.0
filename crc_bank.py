@@ -424,16 +424,30 @@ elif args["check_proposal_violations"]:
 
 elif args["usage"]:
     proposal = proposal_table.find_one(account=args["<account>"])
-    investments = investor_table.find(account=args["<account>"])
-    # print(proposal)
-    # for investment in investments:
-    #    print(investment)
+    investments = utils.sum_investments(investor_table.find(account=args["<account>"]))
     with StringIO() as output:
-        total_smp_usage = utils.get_account_usage(
-            args["<account>"], "smp", proposal["smp"], output
-        )
+        for cluster in CLUSTERS:
+            output.write(f"|{'-' * 82}|\n")
+            output.write(
+                f"|{'Cluster: ' + cluster + ', Available SUs: ' + str(proposal[cluster]) + ', Investment SUs: ' + str(investments[cluster]):^82}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            output.write(
+                f"|{'User':^20}|{'SUs Used':^30}|{'Percentage of Total':^30}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            total_usage = utils.get_account_usage(
+                args["<account>"], cluster, proposal[cluster], output
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            if proposal[cluster] == 0:
+                output.write(f"|{'Overall':^20}|{total_usage:^30}|{'N/A':^30}|\n")
+            else:
+                output.write(
+                    f"|{'Overall':^20}|{total_usage:^30}|{100 * total_usage / proposal[cluster]:^30}|\n"
+                )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
         print(output.getvalue())
-    print(total_smp_usage)
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
