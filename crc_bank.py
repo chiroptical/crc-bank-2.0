@@ -14,20 +14,21 @@ Usage:
     crc_bank.py check_proposal_end_date <account>
     crc_bank.py check_proposal_violations
     crc_bank.py get_sus <account>
-    crc_bank.py dump <proposal.json> <investor.json>
+    crc_bank.py dump <proposal.json> <investor.json> <investor_archive.json>
     crc_bank.py -h | --help
     crc_bank.py -v | --version
 
 Positional Arguments:
-    <account>       The associated slurm account
-    <type>          The proposal type: proposal or class
-    <smp>           The limit in CPU Hours (e.g. 10000)
-    <mpi>           The limit in CPU Hours (e.g. 10000)
-    <gpu>           The limit in GPU Hours (e.g. 10000)
-    <htc>           The limit in CPU Hours (e.g. 10000)
-    <date>          Change proposal start date (e.g 12/01/19)
-    <proposal.json> The proposal table in JSON format
-    <investor.json> The investor table in JSON format
+    <account>               The associated slurm account
+    <type>                  The proposal type: proposal or class
+    <smp>                   The limit in CPU Hours (e.g. 10000)
+    <mpi>                   The limit in CPU Hours (e.g. 10000)
+    <gpu>                   The limit in GPU Hours (e.g. 10000)
+    <htc>                   The limit in CPU Hours (e.g. 10000)
+    <date>                  Change proposal start date (e.g 12/01/19)
+    <proposal.json>         The proposal table in JSON format
+    <investor.json>         The investor table in JSON format
+    <investor_archive.json> The investor archival table in JSON format
 
 Options:
     -h --help       Print this screen and exit
@@ -48,7 +49,7 @@ import utils
 import json
 from math import ceil
 from pathlib import Path
-from constants import CLUSTERS, proposal_table, investor_table
+from constants import CLUSTERS, proposal_table, investor_table, investor_archive_table
 from copy import copy
 from io import StringIO
 
@@ -249,6 +250,12 @@ elif args["date"]:
     )
 
 elif args["check_sus_limit"]:
+    # This is a complicated function, the steps:
+    # 1. Get proposal for account and compute the total SUs from proposal
+    # 2. Determine the current usage for the user across clusters
+    # 3. Add any investment SUs to the total, archiving any exhausted investments
+    # 4. Add archived investments associated to the current proposal
+
     # Account must exist in database
     _ = utils.unwrap_if_right(
         utils.account_exists_in_table(proposal_table, args["<account>"])
@@ -258,14 +265,60 @@ elif args["check_sus_limit"]:
     proposal_row = proposal_table.find_one(account=args["<account>"])
     total_sus = sum([proposal_row[cluster] for cluster in CLUSTERS])
 
-    investor_rows = investor_table.find(account=args["<account>"])
-    for investor_row in investor_rows:
-        total_sus += sum([investor_row[f"current_{cluster}"] for cluster in CLUSTERS])
-
     # Parse the used SUs for the proposal period
-    used_sus = 0
+    used_sus_per_cluster = {c: 0 for c in CLUSTERS}
     for cluster in CLUSTERS:
-        used_sus += utils.get_raw_usage_in_hours(args["<account>"], cluster)
+        used_sus_per_cluster[cluster] = utils.get_raw_usage_in_hours(
+            args["<account>"], cluster
+        )
+    used_sus = sum(used_sus_per_cluster.values())
+
+    # Compute the sum of investment SUs, archiving any exhausted proposals
+    investor_rows = investor_table.find(account=args["<account>"])
+    sum_investment_sus = 0
+    for investor_row in investor_rows:
+        # Check if investment is exhausted
+        exhausted = {c: False for c in CLUSTERS}
+        for cluster in CLUSTERS:
+            if investor_row[cluster] - investor_row[f"withdrawn_{cluster}"] == 0 and (
+                used_sus_per_cluster[cluster]
+                >= (
+                    proposal_row[cluster]
+                    + sum_investment_sus
+                    + investor_row[f"current_{cluster}"]
+                )
+                or investor_row[f"current_{cluster}"] == 0
+            ):
+                exhausted[cluster] = True
+        if all(exhausted.values()):
+            to_insert = {}
+            for cluster in CLUSTERS:
+                to_insert[cluster] = investor_row[cluster]
+                to_insert[f"current_{cluster}"] = investor_row[f"current_{cluster}"]
+            to_insert["start_date"] = investor_row["start_date"]
+            to_insert["end_date"] = investor_row["end_date"]
+            to_insert["exhaustion_date"] = date.today()
+            to_insert["account"] = args["<account>"]
+            to_insert["proposal_id"] = proposal_row["id"]
+            to_insert["investment_id"] = investor_row["id"]
+            investor_archive_table.insert(to_insert)
+            investor_table.delete(id=investor_row["id"])
+        else:
+            sum_investment_sus += sum(
+                [investor_row[f"current_{cluster}"] for cluster in CLUSTERS]
+            )
+
+    total_sus += sum_investment_sus
+
+    # Compute the sum of any archived investments associated with this proposal
+    investor_archive_rows = investor_archive_table.find(proposal_id=proposal_row["id"])
+    sum_investor_archive_sus = 0
+    for investor_archive_row in investor_archive_rows:
+        sum_investor_archive_sus += sum(
+            [investor_archive_row[f"current_{c}"] for c in CLUSTERS]
+        )
+
+    total_sus += sum_investor_archive_sus
 
     notification_percent = utils.PercentNotified(proposal_row["percent_notified"])
     if notification_percent == utils.PercentNotified.Hundred:
@@ -333,13 +386,17 @@ elif args["get_sus"]:
 elif args["dump"]:
     proposal_p = Path(args["<proposal.json>"])
     investor_p = Path(args["<investor.json>"])
-    if not (proposal_p.exists() and investor_p.exists()):
-        proposal_items = proposal_table.all()
-        investor_items = investor_table.all()
-        datafreeze.freeze(proposal_items, format="json", filename=proposal_p)
-        datafreeze.freeze(investor_items, format="json", filename=investor_p)
+    investor_archive_p = Path(args["<investor_archive.json>"])
+    if not (
+        proposal_p.exists() and investor_p.exists() and investor_archive_p.exists()
+    ):
+        utils.freeze_if_not_empty(proposal_table.all(), proposal_p)
+        utils.freeze_if_not_empty(investor_table.all(), investor_p)
+        utils.freeze_if_not_empty(investor_archive_table.all(), investor_archive_p)
     else:
-        exit(f"ERROR: Neither {proposal_p} nor {investor_p} can exists.")
+        exit(
+            f"ERROR: Neither {proposal_p}, {investor_p}, nor {investor_archive_p} can exist."
+        )
 
 elif args["withdraw"]:
     # Account must exist in database
@@ -423,31 +480,7 @@ elif args["check_proposal_violations"]:
                 )
 
 elif args["usage"]:
-    proposal = proposal_table.find_one(account=args["<account>"])
-    investments = utils.sum_investments(investor_table.find(account=args["<account>"]))
-    with StringIO() as output:
-        for cluster in CLUSTERS:
-            output.write(f"|{'-' * 82}|\n")
-            output.write(
-                f"|{'Cluster: ' + cluster + ', Available SUs: ' + str(proposal[cluster]) + ', Investment SUs: ' + str(investments[cluster]):^82}|\n"
-            )
-            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
-            output.write(
-                f"|{'User':^20}|{'SUs Used':^30}|{'Percentage of Total':^30}|\n"
-            )
-            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
-            total_usage = utils.get_account_usage(
-                args["<account>"], cluster, proposal[cluster], output
-            )
-            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
-            if proposal[cluster] == 0:
-                output.write(f"|{'Overall':^20}|{total_usage:^30}|{'N/A':^30}|\n")
-            else:
-                output.write(
-                    f"|{'Overall':^20}|{total_usage:^30}|{100 * total_usage / proposal[cluster]:^30}|\n"
-                )
-            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
-        print(output.getvalue())
+    print(utils.usage_string(args["<account>"]))
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")

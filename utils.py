@@ -207,18 +207,16 @@ def get_investment_status(account):
     cluster_h = "Cluster"
     total_investment_h = "Total Investment SUs"
     start_date_h = "Start Date"
-    sus_per_year_h = "SUs Per Year"
     current_sus_h = "Current SUs"
     withdrawn_h = "Withdrawn SUs"
 
     cluster_w = 7
     total_investment_w = 20
     start_date_w = 10
-    sus_per_year_w = 12
     current_sus_w = 11
     withdrawn_w = 13
 
-    result_s = f"{cluster_h} | {total_investment_h} | {start_date_h} | {sus_per_year_h} | {current_sus_h} | {withdrawn_h}\n"
+    result_s = f"{cluster_h} | {total_investment_h} | {start_date_h} | {current_sus_h} | {withdrawn_h}\n"
 
     for row in investor_table.find(account=account):
         for cluster in CLUSTERS:
@@ -226,7 +224,7 @@ def get_investment_status(account):
                 per_year = f"per_year_{cluster}"
                 current = f"current_{cluster}"
                 withdrawn = f"withdrawn_{cluster}"
-                result_s += f"{cluster:7} | {row[cluster]:20} | {row['start_date'].strftime(date_format)} | {row[per_year]:12} | {row[current]:11} | {row[withdrawn]:13}\n"
+                result_s += f"{cluster:7} | {row[cluster]:20} | {row['start_date'].strftime(date_format)} | {row[current]:11} | {row[withdrawn]:13}\n"
 
     return result_s
 
@@ -265,7 +263,7 @@ The CRC Proposal Bot
     email_html = email_html.format(
         PercentNotified(proposal_row["percent_notified"]).to_percentage(),
         proposal_row["start_date"].strftime(date_format),
-        "TODO",
+        usage_string(account),
         investment_s,
     )
 
@@ -406,3 +404,38 @@ def get_account_usage(account, cluster, avail_sus, output):
             total_cluster_usage = convert_to_hours(data[raw_usage_idx])
 
     return total_cluster_usage
+
+
+def freeze_if_not_empty(items, path):
+    if items:
+        datafreeze.freeze(items, format="json", filename=path)
+    else:
+        with open(path, "w") as f:
+            f.write("{}\n")
+
+def usage_string(account):
+    proposal = proposal_table.find_one(account=account)
+    investments = sum_investments(investor_table.find(account=account))
+    with StringIO() as output:
+        for cluster in CLUSTERS:
+            output.write(f"|{'-' * 82}|\n")
+            output.write(
+                f"|{'Cluster: ' + cluster + ', Available SUs: ' + str(proposal[cluster]) + ', Investment SUs: ' + str(investments[cluster]):^82}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            output.write(
+                f"|{'User':^20}|{'SUs Used':^30}|{'Percentage of Total':^30}|\n"
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            total_usage = get_account_usage(
+                account, cluster, proposal[cluster], output
+            )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+            if proposal[cluster] == 0:
+                output.write(f"|{'Overall':^20}|{total_usage:^30}|{'N/A':^30}|\n")
+            else:
+                output.write(
+                    f"|{'Overall':^20}|{total_usage:^30}|{100 * total_usage / proposal[cluster]:^30}|\n"
+                )
+            output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
+        return output.getvalue()
