@@ -418,6 +418,7 @@ def freeze_if_not_empty(items, path):
         with open(path, "w") as f:
             f.write("{}\n")
 
+
 def usage_string(account):
     proposal = proposal_table.find_one(account=account)
     investments = sum_investments(investor_table.find(account=account))
@@ -432,9 +433,7 @@ def usage_string(account):
                 f"|{'User':^20}|{'SUs Used':^30}|{'Percentage of Total':^30}|\n"
             )
             output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
-            total_usage = get_account_usage(
-                account, cluster, proposal[cluster], output
-            )
+            total_usage = get_account_usage(account, cluster, proposal[cluster], output)
             output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
             if proposal[cluster] == 0:
                 output.write(f"|{'Overall':^20}|{total_usage:^30}|{'N/A':^30}|\n")

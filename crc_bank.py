@@ -8,13 +8,14 @@ Usage:
     crc_bank.py date <account> <date>
     crc_bank.py investor <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
     crc_bank.py withdraw <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
+    crc_bank.py renewal <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
     crc_bank.py info <account>
     crc_bank.py usage <account>
     crc_bank.py check_sus_limit <account>
     crc_bank.py check_proposal_end_date <account>
     crc_bank.py check_proposal_violations
     crc_bank.py get_sus <account>
-    crc_bank.py dump <proposal.json> <investor.json> <investor_archive.json>
+    crc_bank.py dump <proposal.json> <investor.json> <proposal_archive.json> <investor_archive.json>
     crc_bank.py -h | --help
     crc_bank.py -v | --version
 
@@ -48,7 +49,13 @@ import utils
 import json
 from math import ceil
 from pathlib import Path
-from constants import CLUSTERS, proposal_table, investor_table, investor_archive_table
+from constants import (
+    CLUSTERS,
+    proposal_table,
+    investor_table,
+    proposal_archive_table,
+    investor_archive_table,
+)
 from copy import copy
 from io import StringIO
 
@@ -385,14 +392,21 @@ elif args["get_sus"]:
 elif args["dump"]:
     proposal_p = Path(args["<proposal.json>"])
     investor_p = Path(args["<investor.json>"])
+    proposal_archive_p = Path(args["<proposal_archive.json>"])
     investor_archive_p = Path(args["<investor_archive.json>"])
-    if proposal_p.exists() or investor_p.exists() or investor_archive_p.exists():
+    if (
+        proposal_p.exists()
+        or investor_p.exists()
+        or investor_archive_p.exists()
+        or proposal_archive_p.exists()
+    ):
         exit(
-            f"ERROR: Neither {proposal_p}, {investor_p}, nor {investor_archive_p} can exist."
+            f"ERROR: Neither {proposal_p}, {investor_p}, {proposal_archive_p}, nor {investor_archive_p} can exist."
         )
     else:
         utils.freeze_if_not_empty(proposal_table.all(), proposal_p)
         utils.freeze_if_not_empty(investor_table.all(), investor_p)
+        utils.freeze_if_not_empty(proposal_archive_table.all(), proposal_archive_p)
         utils.freeze_if_not_empty(investor_archive_table.all(), investor_archive_p)
 
 elif args["withdraw"]:
@@ -478,6 +492,74 @@ elif args["check_proposal_violations"]:
 
 elif args["usage"]:
     print(utils.usage_string(args["<account>"]))
+
+elif args["renewal"]:
+    # Account must exist in database
+    _ = utils.unwrap_if_right(
+        utils.account_exists_in_table(proposal_table, args["<account>"])
+    )
+
+    # Account associations better exist!
+    _ = utils.unwrap_if_right(
+        utils.account_and_cluster_associations_exists(args["<account>"])
+    )
+
+    # Make sure SUs are valid
+    sus = utils.unwrap_if_right(utils.check_service_units_valid(args))
+
+    # Archive current proposal, recording the usage on each cluster
+    current_proposal = proposal_table.find_one(account=args["<account>"])
+    current_usage = {
+        c: utils.get_raw_usage_in_hours(args["<account>"], c) for c in CLUSTERS
+    }
+    to_insert = {f"{c}_usage": current_usage[c] for c in CLUSTERS}
+    for key in ["account", "start_date", "end_date"] + CLUSTERS:
+        to_insert[key] = current_proposal[key]
+    proposal_archive_table.insert(to_insert)
+
+    # Archive any investments which are past their end_date
+    investor_rows = investor_table.find(account=args["<account>"])
+    for investor_row in investor_rows:
+        if investor_row["end_date"] >= date.today():
+            to_insert = {}
+            for cluster in CLUSTERS:
+                to_insert[cluster] = investor_row[cluster]
+                to_insert[f"current_{cluster}"] = investor_row[f"current_{cluster}"]
+            to_insert["start_date"] = investor_row["start_date"]
+            to_insert["end_date"] = investor_row["end_date"]
+            to_insert["exhaustion_date"] = date.today()
+            to_insert["account"] = args["<account>"]
+            to_insert["proposal_id"] = current_proposal["id"]
+            to_insert["investment_id"] = investor_row["id"]
+            investor_archive_table.insert(to_insert)
+            investor_table.delete(id=investor_row["id"])
+
+    # TODO: Roll-over investments
+    # -> 1. Check if we have even used investment SUs
+    dipped_into_investments = {
+        c: current_usage[c] > current_proposal[c] for c in CLUSTERS
+    }
+    print(dipped_into_investments)
+    exit()
+
+    # Insert new proposal
+    proposal_type = utils.ProposalType(current_proposal["proposal_type"])
+    proposal_duration = utils.get_proposal_duration(proposal_type)
+    start_date = date.today()
+    end_date = start_date + proposal_duration
+    update_with = {
+        "percent_notified": utils.PercentNotified.Zero.value,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    for c in CLUSTERS:
+        update_with[c] = sus[c]
+    proposal_table.update(to_insert, ["id"])
+
+    # Unlock the account
+    utils.unlock_account()
+
+    # TODO: Should we notify the PI there proposal has been renewed?
 
 else:
     raise NotImplementedError("The requested command isn't implemented yet.")
