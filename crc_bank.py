@@ -1,13 +1,13 @@
 #!/usr/bin/env /ihome/sam/cluster/scripts/python3.7_wrap.sh
 """ crc_bank.py -- Deal with crc_bank.db
 Usage:
-    crc_bank.py insert <type> <account> <smp> <mpi> <gpu> <htc>
-    crc_bank.py modify <account> <smp> <mpi> <gpu> <htc>
-    crc_bank.py add <account> <smp> <mpi> <gpu> <htc>
-    crc_bank.py change <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py insert <type> <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
+    crc_bank.py modify <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
+    crc_bank.py add <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
+    crc_bank.py change <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
     crc_bank.py date <account> <date>
-    crc_bank.py investor <account> <smp> <mpi> <gpu> <htc>
-    crc_bank.py withdraw <account> <smp> <mpi> <gpu> <htc>
+    crc_bank.py investor <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
+    crc_bank.py withdraw <account> [-s <sus>] [-m <sus>] [-g <sus>] [-c <sus>]
     crc_bank.py info <account>
     crc_bank.py usage <account>
     crc_bank.py check_sus_limit <account>
@@ -18,21 +18,21 @@ Usage:
     crc_bank.py -h | --help
     crc_bank.py -v | --version
 
+Options:
+    -h --help               Print this screen and exit
+    -v --version            Print the version of crc_bank.py
+    -s --smp <sus>          The smp limit in CPU Hours [default: 0]
+    -m --mpi <sus>          The mpi limit in CPU Hours [default: 0]
+    -g --gpu <sus>          The gpu limit in CPU Hours [default: 0]
+    -c --htc <sus>          The htc limit in CPU Hours [default: 0]
+
 Positional Arguments:
     <account>               The associated slurm account
     <type>                  The proposal type: proposal or class
-    <smp>                   The limit in CPU Hours (e.g. 10000)
-    <mpi>                   The limit in CPU Hours (e.g. 10000)
-    <gpu>                   The limit in GPU Hours (e.g. 10000)
-    <htc>                   The limit in CPU Hours (e.g. 10000)
     <date>                  Change proposal start date (e.g 12/01/19)
     <proposal.json>         The proposal table in JSON format
     <investor.json>         The investor table in JSON format
     <investor_archive.json> The investor archival table in JSON format
-
-Options:
-    -h --help       Print this screen and exit
-    -v --version    Print the version of crc_bank.py
 
 Additional Documentation:
     crc_bank.py insert # insert for the first time
@@ -42,7 +42,6 @@ Additional Documentation:
 """
 
 
-import datafreeze
 from docopt import docopt
 from datetime import date, timedelta
 import utils
@@ -387,16 +386,14 @@ elif args["dump"]:
     proposal_p = Path(args["<proposal.json>"])
     investor_p = Path(args["<investor.json>"])
     investor_archive_p = Path(args["<investor_archive.json>"])
-    if not (
-        proposal_p.exists() and investor_p.exists() and investor_archive_p.exists()
-    ):
-        utils.freeze_if_not_empty(proposal_table.all(), proposal_p)
-        utils.freeze_if_not_empty(investor_table.all(), investor_p)
-        utils.freeze_if_not_empty(investor_archive_table.all(), investor_archive_p)
-    else:
+    if proposal_p.exists() or investor_p.exists() or investor_archive_p.exists():
         exit(
             f"ERROR: Neither {proposal_p}, {investor_p}, nor {investor_archive_p} can exist."
         )
+    else:
+        utils.freeze_if_not_empty(proposal_table.all(), proposal_p)
+        utils.freeze_if_not_empty(investor_table.all(), investor_p)
+        utils.freeze_if_not_empty(investor_archive_table.all(), investor_archive_p)
 
 elif args["withdraw"]:
     # Account must exist in database
