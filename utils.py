@@ -9,6 +9,7 @@ from smtplib import SMTP
 from email.message import EmailMessage
 from bs4 import BeautifulSoup
 from constants import CLUSTERS, proposal_table, investor_table, date_format
+import datafreeze
 
 
 def run_command(cmd):
@@ -37,7 +38,10 @@ def check_service_units_valid(args, greater_than_ten_thousand=True):
     result = {}
     for clus in CLUSTERS:
         try:
-            result[clus] = int(args[f"<{clus}>"])
+            if args[f"--{clus}"]:
+                result[clus] = int(args[f"--{clus}"])
+            else:
+                result[clus] = 0
         except ValueError:
             lefts.append(
                 f"Given non-integer value `{args[f'<{clus}>']}` for cluster `{clus}`"
@@ -407,8 +411,9 @@ def get_account_usage(account, cluster, avail_sus, output):
 
 
 def freeze_if_not_empty(items, path):
-    if items:
-        datafreeze.freeze(items, format="json", filename=path)
+    force_eval = list(items)
+    if force_eval:
+        datafreeze.freeze(force_eval, format="json", filename=path)
     else:
         with open(path, "w") as f:
             f.write("{}\n")
