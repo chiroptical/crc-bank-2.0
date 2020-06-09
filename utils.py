@@ -1,6 +1,6 @@
 from subprocess import Popen, PIPE
 from shlex import split
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from enum import Enum
 from io import StringIO
 import csv
@@ -443,3 +443,7 @@ def usage_string(account):
                 )
             output.write(f"|{'-' * 20}|{'-' * 30}|{'-' * 30}|\n")
         return output.getvalue()
+
+
+def years_left(end):
+    return end.year - date.today().year

@@ -128,6 +128,7 @@ elif args["investor"]:
         to_insert[c] = sus[c]
         to_insert[f"current_{c}"] = ceil(sus[c] / 5)
         to_insert[f"withdrawn_{c}"] = ceil(sus[c] / 5)
+        to_insert[f"rollover_{c}"] = 0
 
     investor_table.insert(to_insert)
 
@@ -520,7 +521,7 @@ elif args["renewal"]:
     # Archive any investments which are past their end_date
     investor_rows = investor_table.find(account=args["<account>"])
     for investor_row in investor_rows:
-        if investor_row["end_date"] >= date.today():
+        if investor_row["end_date"] <= date.today():
             to_insert = {}
             for cluster in CLUSTERS:
                 to_insert[cluster] = investor_row[cluster]
@@ -534,13 +535,55 @@ elif args["renewal"]:
             investor_archive_table.insert(to_insert)
             investor_table.delete(id=investor_row["id"])
 
-    # TODO: Roll-over investments
-    # -> 1. Check if we have even used investment SUs
-    dipped_into_investments = {
-        c: current_usage[c] > current_proposal[c] for c in CLUSTERS
-    }
-    print(dipped_into_investments)
-    exit()
+    current_investments = utils.sum_investments(
+        utils.get_current_investor_sus(args["<account>"])
+    )
+
+    # If there are relevant investments,
+    #     check if there is any rollover
+    if sum(current_investments.values()):
+        need_to_rollover = {}
+        for cluster in CLUSTERS:
+            # If current usage exceeds proposal, rollover some SUs, else rollover all SUs
+            if current_usage[cluster] > current_proposal[cluster]:
+                need_to_rollover[cluster] = (
+                    current_proposal[cluster]
+                    + current_investments[cluster]
+                    - current_usage[cluster]
+                )
+            else:
+                need_to_rollover[cluster] = current_investments[cluster]
+
+            # If the current usage exceeds proposal + investments or there is no investment, no need to rollover
+            if need_to_rollover[cluster] < 0 or current_investments[cluster] == 0:
+                need_to_rollover[cluster] = 0
+
+        # TODO: Explore ramifications of having rollover SUs in other functions
+        # - check_sus_limit is probably broken
+        # - withdraw might be broken
+        if sum(need_to_rollover.values()):
+            # Go through investments and roll them over
+            investor_rows = investor_table.find(account=args["<account>"])
+            for investor_row in investor_rows:
+                for cluster in CLUSTERS:
+                    if need_to_rollover[cluster] > 0:
+                        to_withdraw = (
+                            investor_row[f"{cluster}"]
+                            - investor_row[f"withdrawn_{cluster}"]
+                        ) // utils.years_left(investor_row["end_date"])
+                        to_rollover = (
+                            investor_row[f"current_{cluster}"]
+                            if investor_row[f"current_{cluster}"]
+                            < need_to_rollover[cluster]
+                            else need_to_rollover[cluster]
+                        )
+                        investor_row[f"current_{cluster}"] = to_withdraw
+                        investor_row[f"rollover_{cluster}"] = to_rollover
+                        investor_row[f"withdrawn_{cluster}"] = (
+                            investor_row[f"withdrawn_{cluster}"] + to_withdraw
+                        )
+                        investor_table.update(investor_row, ["id"])
+                        need_to_rollover[cluster] -= to_rollover
 
     # Insert new proposal
     proposal_type = utils.ProposalType(current_proposal["proposal_type"])
@@ -557,7 +600,7 @@ elif args["renewal"]:
     proposal_table.update(to_insert, ["id"])
 
     # Unlock the account
-    utils.unlock_account()
+    utils.unlock_account(args["<account>"])
 
     # TODO: Should we notify the PI there proposal has been renewed?
 
