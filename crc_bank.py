@@ -553,6 +553,8 @@ elif args["renewal"]:
                 )
             else:
                 need_to_rollover[cluster] = current_investments[cluster]
+            # Only half should rollover
+            need_to_rollover[cluster] /= 2
 
             # If the current usage exceeds proposal + investments or there is no investment, no need to rollover
             if need_to_rollover[cluster] < 0 or current_investments[cluster] == 0:
