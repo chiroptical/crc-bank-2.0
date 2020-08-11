@@ -1,5 +1,7 @@
-A Banking and Proposal System For Slurm
+A Banking and Proposal System For Slurm (WIP)
 ---
+
+**If you are interested in trying this out at your site, please email me directly.**
 
 TODO
 ---
